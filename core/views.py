@@ -27,7 +27,7 @@ class CriarOrganizadorAPIView(APIView):
 
 
 class RelatorioAPIView(APIView):
-    permission_classes=[IsAdminUser]
+    permission_classes=[IsAuthenticated,IsOrganizador]
     def get(self,request):
         relatorio=Relatorio.objects.all()
         serializer=RelatorioSerializers(relatorio,many=True)
@@ -147,18 +147,22 @@ class ListarEmailsAPIView(APIView):
     permission_classes=[IsAuthenticated,IsOrganizador]
     def get(self,request,evento_id):
         organizador=request.user.organizador
-        evento=get_object_or_404(Eventos,evento_id,organizador=organizador)
+        evento=get_object_or_404(Eventos,id=evento_id,organizador=organizador)
         email=Email.objects.filter(
             evento=evento,
         )
-        return Response(
-            [{"email": e.email} for e in email],
-            status=status.HTTP_200_OK
-        )
-    #put method para reembolsar inscrição em vez de post
+        try:
+            with transaction.atomic():
+                serializer=EmailSerializers(email,many=True)
+                return Response(serializer.data,status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            return Response({
+                'erro':f'ocorreu um erro {str(e)}'
+            })
 class InscricaoConfirmadaAPIView(APIView):
     permission_classes=[IsAuthenticated,IsOrganizador]
-    def post(self,request,inscricao_id):
+    def put(self,request,inscricao_id):
         inscricao=get_object_or_404(Inscricoes,id=inscricao_id)
         evento=inscricao.evento
         organizador=request.user.organizador
@@ -172,16 +176,23 @@ class InscricaoConfirmadaAPIView(APIView):
                 {'erro':'Esta inscrição já está confirmada'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        inscricao.status=StatusInscricao.CONFIRMADA
-        inscricao.save()
-        return Response(
-            {'sucesso':'Inscrição confirmada com sucesso'},
-            status=status.HTTP_200_OK
-        )
-    #put method para reembolsar inscrição em vez de post
+        with transaction.atomic():
+            try:
+                inscricao.status=StatusInscricao.CONFIRMADA
+                inscricao.pago=True
+                inscricao.save()
+                return Response(
+                    {'sucesso':'Inscrição confirmada com sucesso'},
+                    status=status.HTTP_200_OK
+                )
+            except Exception as e:
+                return Response({
+                    'erro': 'Não foi possivel confirmar a inscrição','detalhe':str(e)
+                },status=status.HTTP_400_BAD_REQUEST)
+
 class CancelarInscricaoAPIView(APIView):
     permission_classes=[IsAuthenticated,IsOrganizador]
-    def post(self,request,inscricao_id):
+    def put(self,request,inscricao_id):
         inscricao=get_object_or_404(Inscricoes,id=inscricao_id)
         evento=inscricao.evento
         organizador=request.user.organizador
@@ -195,17 +206,24 @@ class CancelarInscricaoAPIView(APIView):
                 {'erro':'Esta inscrição já está cancelada'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        inscricao.status=StatusInscricao.CANCELADA
-        inscricao.save()
-        return Response(
-            {'sucesso':'Inscrição cancelada com sucesso'},
-            status=status.HTTP_200_OK
-        )
-    #put method para reembolsar inscrição em vez de post
+        try:
+            with transaction.atomic():
+                inscricao.status=StatusInscricao.CANCELADA
+                inscricao.pago=False
+                inscricao.save()
+                return Response(
+                    {'sucesso':'Inscrição cancelada com sucesso'},
+                    status=status.HTTP_200_OK
+                )
+        except Exception as e:
+            return Response({
+                'erro':'Ocorreu um erro ao cancelar a inscricão','detalhe':str(e)
+            },status=status.HTTP_400_BAD_REQUEST)
+
 class ReembolsarInscricaoAPIView(APIView):
     permission_classes=[IsAuthenticated,IsOrganizador]
-    def post(self,request,inscricao_id):
-        inscricao=get_object_or_404(Inscricoes,inscricao_id)
+    def put(self,request,inscricao_id):
+        inscricao=get_object_or_404(Inscricoes,id=inscricao_id)
         evento=inscricao.evento
         organizador=request.user.organizador
 
@@ -217,47 +235,24 @@ class ReembolsarInscricaoAPIView(APIView):
             return Response({
                 'erro':'Essa inscrição já se encontra reembolsada'
             })
-        inscricao.status==StatusInscricao.REEMBOLSADO
-        inscricao.save()
-        return Response({
-            'sucesso':'Inscrição reembolsada com sucesso'
-        },status=status.HTTP_200_OK)
+        try:
+            with transaction.atomic():
+                inscricao.status=StatusInscricao.REEMBOLSADO
+                inscricao.pago=False
+                inscricao.save()
+                call_command('atualizar_pagamentos')
+                return Response({
+                    'sucesso':'Inscrição reembolsada com sucesso'
+                },status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({
+                'erro':'Ocorreu um erro ao processar o reembolso:','detalhe':str(e)
+            },status=status.HTTP_400_BAD_REQUEST)
 
 
 #api de pagamento improvisada
 class PagamentosAPIView(APIView):
     permission_classes=[IsAuthenticated,IsParticipante]
-    def post(self,request,inscricao_id):
-        inscricao=get_object_or_404(Inscricoes,id=inscricao_id)
-        participante=request.user.participante
-        if inscricao.participante != participante:
-            return Response(
-                {'erro':'Você não pode pagar por uma inscrição que não é sua'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        if Pagamentos.objects.filter(
-            evento=inscricao.evento,
-            participante=participante,
-            status='Concluido'
-        ).exists():
-            return Response(
-                {'erro':'Pagamento já realizado para esta inscrição'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        if Inscricoes.objects.filter(
-            evento=inscricao.evento,
-            participante=participante,
-            status='pendente'
-        ).exists():
-            serializer=PagamentosSerializers(data=request.data)
-            serializer.is_valid(raise_exception=True)
-            serializer.save(evento=inscricao.evento,participante=participante,pago=inscricao.evento.preco)
-            return Response(
-                {'sucesso':'Pagamento  realizado com sucesso'},
-                serializer.data,
-                status=status.HTTP_201_CREATED)
-
     def put(self, request, pagamento_id):
         """
         Confirma o pagamento e atualiza todo o fluxo:

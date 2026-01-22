@@ -120,7 +120,6 @@ class EmailSerializers(serializers.ModelSerializer):
             'mensagem',
             'status',
             'data_criacao',
-            'data_envio',
             'tentativas'
         ]
         read_only_fields = [

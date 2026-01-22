@@ -3,6 +3,9 @@ from django.dispatch import receiver
 from .models import Inscricoes, Pagamentos, StatusInscricao, StatusPagamento, Email, TipoEmail, StatusEmail
 from django.core.mail import send_mail
 from django.conf import settings
+from rest_framework.response import Response
+from rest_framework import status
+from datetime import datetime,timedelta
 
 @receiver(post_save, sender=Inscricoes)
 def enviar_email_automatico(sender, instance, created, **kwargs):
@@ -27,7 +30,13 @@ def enviar_email_automatico(sender, instance, created, **kwargs):
         email_reembolso_enviado = Email.objects.filter(
             evento=instance.evento,
             destinatario=instance.participante,
-            tipo=TipoEmail.CANCELAMENTO,  # Reembolso também usa tipo CANCELAMENTO
+            tipo=TipoEmail.REEMBOLSO,  
+            status=StatusEmail.ENVIADO
+        ).exists()
+        email_lembrete_enviado = Email.objects.filter(
+            evento=instance.evento,
+            destinatario=instance.participante,
+            tipo=TipoEmail.LEMBRETE,  
             status=StatusEmail.ENVIADO
         ).exists()
         
@@ -112,7 +121,9 @@ Obrigado!
                     enviado=True
                 )
             except Exception as e:
-                print(f"Erro ao enviar email de cancelamento: {e}")
+                return Response(
+                    {'erro':f'Erro ao enviar email de cancelamento: {str(e)}'
+                    })
             
             Pagamentos.objects.filter(
                 evento=instance.evento,
@@ -150,14 +161,16 @@ Obrigado!
                 Email.objects.create(
                     destinatario=instance.participante,
                     evento=instance.evento,
-                    tipo=TipoEmail.CANCELAMENTO,
+                    tipo=TipoEmail.REEMBOLSO,
                     assunto=assunto,
                     mensagem=mensagem,
                     status=StatusEmail.ENVIADO,
                     enviado=True
                 )
             except Exception as e:
-                print(f"Erro ao enviar email de reembolso: {e}")
+                return Response({
+                    'erro':f'Erro ao enviar email de reembolso: {str(e)}'
+                },status=status.HTTP_400_BAD_REQUEST)
             
             Pagamentos.objects.filter(
                 evento=instance.evento,
@@ -166,4 +179,45 @@ Obrigado!
                 status=StatusPagamento.REEMBOLSADO,
                 ativo=False
             )
+        elif instance.pago==True and instance.status==StatusInscricao.CONFIRMADA and not email_lembrete_enviado:
+                dia=datetime.now().date()
+                dia_evento=instance.evento.inicio.date()
+                if dia_evento-dia== timedelta(days=2):
+                    assunto=f'Lembrete do evento {instance.evento.titulo}'
+                    mensagem=f"""
+        Olá {instance.participante.nome},
 
+        Faltam 2 dias para o evento "{instance.evento.titulo}".
+
+        Detalhes:
+        Evento: {instance.evento.titulo}
+        Data: {instance.evento.fim.date()}
+        Local: {instance.evento.localizacao}
+
+
+        Não se esqueça de comparecer!.
+
+        Obrigado!
+        """
+                    try:
+                        
+                        send_mail(
+                            assunto,
+                            mensagem,
+                            settings.EMAIL_HOST_USER,
+                            [instance.participante.email],
+                            fail_silently=False
+                        )
+
+                        Email.objects.create(
+                            destinatario=instance.participante,
+                            evento=instance.evento,
+                            tipo=TipoEmail.LEMBRETE,
+                            assunto=assunto,
+                            mensagem=mensagem,
+                            status=StatusEmail.ENVIADO         
+                        )
+                    except Exception as e:
+                        return Response({
+                            'erro':f'Erro ao enviar email de cancelamento: {str(e)}'
+                        })
