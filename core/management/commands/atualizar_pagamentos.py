@@ -22,7 +22,7 @@ class Command(BaseCommand):
                 ativo=True
             )
             total_atualizados += updated
-        self.stdout.write(f'Inscrições CONFIRMADAS: {count_confirmadas}')
+        # self.stdout.write(f'Inscrições CONFIRMADAS: {count_confirmadas}')
 
         # Atualizar inscrições CANCELADAS
         inscricoes_canceladas = Inscricoes.objects.filter(
@@ -38,7 +38,7 @@ class Command(BaseCommand):
                 ativo=False
             )
             total_atualizados += updated
-        self.stdout.write(f'Inscrições CANCELADAS: {count_canceladas}')
+        # self.stdout.write(f'Inscrições CANCELADAS: {count_canceladas}')
 
         # Atualizar inscrições REEMBOLSADAS
         inscricoes_reembolsadas = Inscricoes.objects.filter(
@@ -54,6 +54,6 @@ class Command(BaseCommand):
                 ativo=False
             )
             total_atualizados += updated
-        self.stdout.write(f'Inscrições REEMBOLSADAS: {count_reembolsadas}')
+        # self.stdout.write(f'Inscrições REEMBOLSADAS: {count_reembolsadas}')
 
-        self.stdout.write(self.style.SUCCESS(f'Total de pagamentos atualizados: {total_atualizados}'))
+        # self.stdout.write(self.style.SUCCESS(f'Total de pagamentos atualizados: {total_atualizados}'))
