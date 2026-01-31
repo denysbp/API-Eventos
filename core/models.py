@@ -123,20 +123,17 @@ class Inscricoes(models.Model):
         if self.status==StatusInscricao.PENDENTE:
             assunto=f'Inscrição no evento {self.evento.titulo}'
             mensagem=f"""
-    Olá {self.participante.nome},
+Olá {self.participante.nome},
 
-    A sua inscrição no evento "{self.evento.titulo}" foi criada com sucesso.
-
-    Detalhes:
-    Evento: {self.evento.titulo}
-    Data: {self.evento.fim.date()}
-    Local: {self.evento.localizacao}
-
-    Por favor, efetue o pagamento para confirmar a sua vaga.
-    Será enviado um link para o pagamento assim que confirmado sua inscrição estará ativa.
-
-    Obrigado!
-    """
+A sua inscrição no evento "{self.evento.titulo}" foi criada com sucesso.
+Detalhes:
+Evento: {self.evento.titulo}
+Data: {self.evento.fim.date()}
+Local: {self.evento.localizacao}
+Por favor, efetue o pagamento para confirmar a sua vaga.
+Será enviado um link para o pagamento assim que confirmado sua inscrição estará ativa.
+Obrigado!
+"""
             if not Email.objects.filter(
                 evento=self.evento,
                 destinatario=self.participante,

@@ -1,11 +1,13 @@
 from .models import Pagamentos,Participante,Email,Eventos,Organizador,Relatorio,Inscricoes
 from django.contrib.auth.models import User
 from rest_framework import serializers
-
+from rest_framework.authtoken.models import Token
+from django.core.mail import send_mail
+from datetime import date
 
 class ParticipanteSerializer(serializers.ModelSerializer):
-    username=serializers.CharField(write_only=True)
-    password=serializers.CharField(write_only=True)
+    username = serializers.CharField(write_only=True)
+    password = serializers.CharField(write_only=True)
 
     class Meta:
         model = Participante
@@ -23,10 +25,16 @@ class ParticipanteSerializer(serializers.ModelSerializer):
             username=username,
             password=password
         )
+        if Token.objects.filter(
+            user=user
+        ).exists():
+            raise serializers.ValidationError('Este usuario já tem um token')
+        token=Token.objects.create(user=user)
         participante=Participante.objects.create(
             user=user,
             **validated_data
         )
+        
         return participante
     def validate_username(self,value):
         if User.objects.filter(username=value).exists():
@@ -56,12 +64,13 @@ class OrganizadorSerializers(serializers.ModelSerializer):
             username=username,
             password=password    
         )
+        token=Token.objects.create(user=user)   
         organizador=Organizador.objects.create(
             user=user,
             **validated_data
         )
         return organizador
-    
+
 
     def validate_username(self,value):
         if User.objects.filter(username=value).exists():
